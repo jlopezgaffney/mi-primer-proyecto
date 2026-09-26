@@ -1,9 +1,5 @@
 ```markdown
-   # Mi primer proyecto
+   ## Mi primer avance
 
-   Soy Jose y estoy aprendiendo a usar GitHub.
-
-   ## Mi objetivo
-
-   Quiero organizar mis trabajos de Big Data.
+   Hoy creé un repositorio y guardé mi primer commit.
    ```
