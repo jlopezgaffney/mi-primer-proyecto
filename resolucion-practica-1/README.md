@@ -15,3 +15,11 @@ Experimento: Inferencia de tipos
 
 4. Delta y plan de Accion
    El delta muestra la historia (En mi archivo hay 3 versiones en el Describe History porque corri 3 veces este codigo), la ubicacion, tamaño, un plan de ejecucion, etc. Se lo recubre de una capa de metadata, que ayuda con las propiedades ACID.
+
+Para cerrar: CSV es un string enorme y JSON es un achivo anidado, en ninguno se declara el tipo de dato. Parquet declara el tipo de dato, y el Delta le suma una capa de historial, transacciones y metadatos
+
+Las 5 V del Big Data
+Volumen: Son 50.000 registros.
+Velocidad: Cuando se importan los datos, llegan todos al mismo tiempo, y hay que procesarlos.
+Veracidad: Se corrobora que no haya registros duplicados, ni que haya invalidos.
+Valor: Esta es la capa Bronce, que ayuda a construir el resto de la arquitectura Medallion.
