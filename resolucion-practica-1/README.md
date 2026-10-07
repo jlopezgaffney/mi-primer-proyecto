@@ -1,5 +1,5 @@
 Nombre: José López Gaffney
-srudent_id: jose1
+student_id: jose1
 
 1. Leer no es transformar:
   Un CSV es un archivo plano, por lo que esta todo pegado en un sting gigante.
