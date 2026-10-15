@@ -21,9 +21,14 @@ El copy into aparece en "la ingesta bronce", sineod que carga los archivos en el
 
 Las respuestas de la visualizacion, con sus graficos, están dentro del archivo "05_visualizacion"
 
-1)
+1)El batch_002 recibió 204 filas, y el batch_003 otras 204
+SELECT source_batch_id, COUNT(*) AS count
+FROM bronze_transactions_incremental
+GROUP BY source_batch_id
+ORDER BY source_batch_id;
 
-2)
+2)En esta etapa se rechazaron 2 de batch_002 y 2 de batch_003. En ambos casos fue una por INVALID_AMOUNT y una por UNKNOWN_CUSTOMER. Por otro lado, se logra divisar que se rechazan 51 por INVALID_AMOUNT
+Esto concuerda con lo que se muestra en el gold batch summary
 
 3)
 
