@@ -34,7 +34,7 @@ ORDER BY source_batch_id;
 
 2) Para cada lote, ¿cuántas transacciones fueron aceptadas y cuántas quedaron en silver_transactions_quarantine? Reconciliá tus resultados con gold_batch_summary.
 
-En esta etapa se rechazaron 2 de batch_002 y 2 de batch_003. En ambos casos fue una por INVALID_AMOUNT y una por UNKNOWN_CUSTOMER. Por otro lado, se logra divisar que se rechazan 51 por INVALID_AMOUNT
+En esta etapa se rechazaron 2 de batch_002 y 2 de batch_003. En ambos casos fue una por INVALID_AMOUNT y una por UNKNOWN_CUSTOMER. Por otro lado, se logra divisar que se rechazan 51 por INVALID_AMOUNT del lote inicial
 
 Esto concuerda con lo que se muestra en el gold batch summary
 
@@ -47,7 +47,7 @@ Los rechazos coinciden con los casos que introduce el generador, porque cada lot
 
 4)Seguí la transacción 42 desde bronze_transactions_all hasta silver_transactions. ¿Cuántas versiones existen en Bronze y cuál quedó vigente en Silver? Mostrá las columnas que justifican la elección.
 
-En Bronze hay 3 versiones de la transaccion 42: la inicial (initial) y una corrección en cada lote (batch_002 y batch_003). En Silver queda una sola: la de batch_003, con importe 1999,99 porque tiene el updated_at mas reciente. La versión inicial pierde porque su updated_at es el event_at original, que es anterior a las dos correcciones.
+En Bronze hay 3 versiones de la transaccion 42: la inicial (initial) y una corrección en cada lote (batch_002 y batch_003). En Silver queda una sola: la de batch_003, con importe 1999,99 porque tiene el updated_at mas reciente. La versión inicial pierde porque su updated_at es el event_ts original, que es anterior a las dos correcciones.
 
 5) Comprobá mediante una consulta que silver_transactions tiene una sola fila por transaction_id. ¿Qué resultado indicaría que la deduplicación falló?
 
@@ -56,7 +56,7 @@ FROM workspace.bigdata_jose1.silver_transactions
 GROUP BY transaction_id
 HAVING COUNT(*) > 1;
 
-Debe devolver 0 filas, si no, la deduplicación habría fallado
+Devuelver 0 filas, que si no lo hubiera hecho la deduplicación habría fallado
 
 6)Calculá la tasa de rechazo de cada lote como rechazadas / (aceptadas + rechazadas) en gold_batch_summary. ¿Es correcto comparar solamente las cantidades absolutas si los lotes tienen tamaños diferentes?
 
@@ -145,7 +145,11 @@ Con dropDuplicate se eliminan las filas iguales, y luego se calcula la clave. Se
 
 17)Interpretá las dos cláusulas principales del MERGE de silver_transactions. ¿Cuándo se actualiza una fila existente y cuándo se inserta una nueva?
 
-Cuando el id existe y la versión nueva es mas reciente se hace un UPDATE. Si el id no existe se hace un INSERT. Si el id existe es igual o mas vieja no se hace nada. 
+{WHEN MATCHED AND s.updated_at > t.updated_at THEN UPDATE SET *} Esta parte chequea que cuando el id existe, y la versión nueva es mas reciente, que se haga un UPDATE.  
+
+{WHEN NOT MATCHED THEN INSERT *} En esta parte si el id no existe se hace un INSERT
+
+Si el id existe, siendo que la versión es igual o mas vieja, no se hace nada.
 
 18)¿Por qué las tablas Gold se reconstruyen completamente en esta práctica mientras Silver se actualiza con MERGE? Mencioná una ventaja y una limitación de cada estrategia.
 
@@ -154,7 +158,7 @@ Gold se reconstruye completo con CREATE OR REPLACE a partir de Silver. Esto es s
 
 19)¿Por qué expected_batch_id no participa en la detección del archivo nuevo? Indicá qué parte del pipeline descubre batch_003 y qué parte utiliza el parámetro.
 
-Se descubre batch_003 en la tarea ingest_bronze, que se revisa la carpeta de entrada y detecta el archivo nuevo con el COPY INTO. El expected_batch_id lo usa solamente 04_validate_pipeline para saber qué lote verificar. Si se deposita batch_003 pero se deja expected_batch_id = batch_002, el ETL procesa igual el archivo nuevo, pero validate falla por evaluar las expectativas del lote equivocado.
+Se descubre batch_003 en la tarea ingest_bronze, con el COPY INTO que se revisa la carpeta de entrada y detecta el archivo nuevo. El expected_batch_id lo usa solamente 04_validate_pipeline para saber qué lote verificar. Si se deposita batch_003 pero se deja expected_batch_id = batch_002, el ETL procesa igual el archivo nuevo, pero validate falla por evaluar las expectativas del lote equivocado.
 
 20)Si la tarea build_silver falla, ¿qué ocurre con build_gold y validate en el Job? Explicá cómo las dependencias del DAG evitan publicar o validar resultados incompletos.
 
