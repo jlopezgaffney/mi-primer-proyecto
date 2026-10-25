@@ -23,7 +23,7 @@ dbutils.widgets.text("fecha", "", "03 - Fecha (opcional)")
 
 # COMMAND ----------
 
-# MAGIC %run ./00_config
+# MAGIC %run "./00 config"
 
 # COMMAND ----------
 
