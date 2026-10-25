@@ -22,7 +22,7 @@ dbutils.widgets.text("schema", "sepa_tp", "02 - Esquema")
 
 # COMMAND ----------
 
-# MAGIC %run ./00_config
+# MAGIC %run "./00 config"
 
 # COMMAND ----------
 
