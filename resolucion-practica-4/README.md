@@ -1,5 +1,6 @@
 Jose Lopez Gaffney
 student_id: jose1
+Escala: small
 
 1)En el ejemplo en Python, ¿cuántos mensajes quedaron en la cola y cuántos en el log después de leer tres? ¿Qué diferencia hay entre una cola tradicional y un log como Kafka?
 
