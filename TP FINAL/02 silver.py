@@ -156,32 +156,45 @@ def invalido(column):
 GTIN_CHECK = ("(10 - (aggregate(sequence(0, 12), 0, (acc, i) -> acc + cast(substring(id_gtin14, i + 1, 1) as int) "
               "* (CASE WHEN i % 2 = 0 THEN 3 ELSE 1 END)) % 10)) % 10 = cast(substring(id_gtin14, 14, 1) as int)")
 
-PRODUCTOS_COLUMNAS = 19
+# SEPA publica productos.csv en dos formatos:
+#   mayorista (19 columnas): precios unitarios con y sin IVA, bulto, id_dun_14.
+#   minorista (17 columnas): precio de lista, precio de referencia (por kg/l/...) y promociones.
+COLUMNAS_MAYORISTA, COLUMNAS_MINORISTA = 19, 17
 
 
 def parse_productos(bronze):
+    may = F.col("n") == COLUMNAS_MAYORISTA
+    mino = F.col("n") == COLUMNAS_MINORISTA
     df = lineas(bronze, "productos.csv").select(
         "fecha", "fecha_export", "source_zip", "inner_zip", "line_no", "ingested_at", "raw_line",
         F.col("n").alias("n_columnas"),
+        F.when(may, F.lit("mayorista")).when(mino, F.lit("minorista")).alias("esquema"),
         entero(0).alias("id_comercio"),
         entero(1).alias("id_bandera"),
         entero(2).alias("id_sucursal"),
         txt(3).alias("id_producto"),
         F.coalesce(txt(4) == "1", F.lit(False)).alias("es_ean"),
-        txt(5).alias("id_dun_14"),
-        txt(6).alias("descripcion"),
-        txt(7).alias("marca"),
-        dec(8).alias("precio_unit_con_iva"),
-        dec(9).alias("precio_unit_sin_iva"),
-        num(10).alias("unidad_venta"),
-        dec(11).alias("precio_bulto_con_iva"),
-        dec(12).alias("precio_bulto_sin_iva"),
-        dec(13).alias("precio_promo1_con_iva"),
-        dec(14).alias("precio_promo1_sin_iva"),
-        txt(15).alias("leyenda_promo1"),
-        dec(16).alias("precio_promo2_con_iva"),
-        dec(17).alias("precio_promo2_sin_iva"),
-        txt(18).alias("leyenda_promo2"),
+        F.when(may, txt(5)).alias("id_dun_14"),
+        F.when(may, txt(6)).when(mino, txt(5)).alias("descripcion"),
+        F.when(may, txt(7)).when(mino, txt(8)).alias("marca"),
+        # minorista: precio_lista es el precio al consumidor (con IVA) y no trae precio sin IVA
+        F.when(may, dec(8)).when(mino, dec(9)).alias("precio_unit_con_iva"),
+        F.when(may, dec(9)).alias("precio_unit_sin_iva"),
+        F.when(may, num(10)).alias("unidad_venta"),
+        F.when(may, dec(11)).alias("precio_bulto_con_iva"),
+        F.when(may, dec(12)).alias("precio_bulto_sin_iva"),
+        F.when(may | mino, dec(13)).alias("precio_promo1_con_iva"),
+        F.when(may, dec(14)).alias("precio_promo1_sin_iva"),
+        F.when(may, txt(15)).when(mino, txt(14)).alias("leyenda_promo1"),
+        F.when(may, dec(16)).when(mino, dec(15)).alias("precio_promo2_con_iva"),
+        F.when(may, dec(17)).alias("precio_promo2_sin_iva"),
+        F.when(may, txt(18)).when(mino, txt(16)).alias("leyenda_promo2"),
+        # sólo formato minorista
+        F.when(mino, num(6)).alias("cantidad_presentacion"),
+        F.when(mino, txt(7)).alias("unidad_medida_presentacion"),
+        F.when(mino, dec(10)).alias("precio_referencia"),
+        F.when(mino, num(11)).alias("cantidad_referencia"),
+        F.when(mino, txt(12)).alias("unidad_medida_referencia"),
     )
     # GTIN-14 sólo para códigos EAN/UPC: se quitan ceros a la izquierda y se rellena a 14, así el mismo
     # producto coincide aunque un comercio lo informe con ceros de más. Son *indicadores*, no rechazan.
@@ -193,13 +206,14 @@ def parse_productos(bronze):
                         F.when(~F.col("es_ean"), F.lit(None).cast("boolean"))
                          .when(F.col("id_gtin14").isNull(), F.lit(False))
                          .otherwise(F.coalesce(F.expr(GTIN_CHECK), F.lit(False)))))
-    reason = (F.when(F.col("n_columnas") != PRODUCTOS_COLUMNAS, "columnas_inesperadas")
+    mayorista = F.col("esquema") == "mayorista"
+    reason = (F.when(F.col("esquema").isNull(), "columnas_inesperadas")
               .when(F.col("fecha").isNull(), "sin_fecha")
               .when(F.col("id_comercio").isNull() | F.col("id_sucursal").isNull(), "sin_id_comercio_o_sucursal")
               .when(F.col("id_producto").isNull(), "sin_id_producto")
               .when(invalido("precio_unit_con_iva"), "precio_con_iva_invalido")
-              .when(invalido("precio_unit_sin_iva"), "precio_sin_iva_invalido")
-              .when(invalido("unidad_venta"), "unidad_venta_invalida")
+              .when(mayorista & invalido("precio_unit_sin_iva"), "precio_sin_iva_invalido")
+              .when(mayorista & invalido("unidad_venta"), "unidad_venta_invalida")
               .when(F.col("precio_unit_sin_iva") > F.col("precio_unit_con_iva"), "sin_iva_mayor_que_con_iva"))
     return df.withColumn("quality_reason", reason)
 
@@ -443,7 +457,8 @@ fechas = sorted(fechas, key=lambda f: (f is None, f))
 for t in (T_PROD, T_QUAR):
     if spark.catalog.tableExists(t):
         tipos = dict(spark.table(t).dtypes)
-        if not tipos.get("precio_unit_con_iva", "").startswith("decimal") or "id_gtin14" not in tipos:
+        if not tipos.get("precio_unit_con_iva", "").startswith("decimal") or "id_gtin14" not in tipos \
+                or "esquema" not in tipos:
             raise Exception(f"{t} tiene el esquema anterior. Ejecutá una vez con full_refresh = si "
                             "(se reconstruye desde Bronce sin perder datos).")
 
@@ -519,7 +534,12 @@ def procesar_productos(fechas):
 
 
 if fechas:
-    metricas = procesar_productos(fechas)
+    metricas = {"lineas": 0, "rechazadas": 0, "validas": 0, "filas_silver": 0}
+    for f in fechas:                      # un día por vez: acota la memoria
+        print("Procesando", f or "(sin fecha)")
+        parcial = procesar_productos([f])
+        for k in metricas:
+            metricas[k] += parcial[k]
     print("Controles de productos OK")
 else:
     metricas = {"lineas": 0, "rechazadas": 0, "validas": 0, "filas_silver": 0}
