@@ -139,7 +139,12 @@ def lineas(bronze, file_name):
                       & (F.col("line_no") > 0)
                       & (F.trim("raw_line") != "")
                       & (~F.col("raw_line").rlike("^.ltima actualizaci")))
-    return b.withColumn("p", F.split("raw_line", SPLIT_RE, -1)).withColumn("n", F.size("p"))
+    # Una comilla suelta (pulgadas: 12") desbalancea la regex y la línea queda con menos columnas.
+    # Sólo se respetan las comillas si su cantidad es par; si es impar, corte simple por `|`.
+    comillas = F.length("raw_line") - F.length(F.regexp_replace("raw_line", '"', ""))
+    partes = (F.when(comillas % 2 == 0, F.split("raw_line", SPLIT_RE, -1))
+               .otherwise(F.split("raw_line", r"\|", -1)))
+    return b.withColumn("p", partes).withColumn("n", F.size("p"))
 
 
 def invalido(column):
