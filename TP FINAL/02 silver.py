@@ -83,6 +83,33 @@ print("Fecha:", FECHA or "(pendientes por marca de agua)" if not FULL else "(tod
 # MAGIC %md
 # MAGIC ## 1. Funciones de parseo y calidad
 # MAGIC
+# MAGIC ### Formatos de `productos.csv`: mayorista y minorista
+# MAGIC
+# MAGIC SEPA no etiqueta el formato: se reconoce por el encabezado (y la cantidad de columnas) y Silver lo deja
+# MAGIC explícito en `formato_productos` (en `silver_productos` por línea; en `silver_comercio` y `silver_sucursales`
+# MAGIC por comercio). Una línea que no tiene 17 ni 19 columnas va a cuarentena como `columnas_inesperadas`.
+# MAGIC
+# MAGIC | | `mayorista` | `minorista` |
+# MAGIC |---|---|---|
+# MAGIC | Columnas | 19 | 17 |
+# MAGIC | Precio | unitario del bulto con y sin IVA, precio del bulto, `unidad_venta` | `precio_lista` (de góndola) y precio de referencia por kg/l/u |
+# MAGIC | Cómo se verifica | las sucursales declaran `sucursales_tipo = mayorista` | precio de lista y de referencia (típicos de góndola) |
+# MAGIC
+# MAGIC El cruce `formato_productos` × `tipo` de la sección 5 permite comprobar que la etiqueta es coherente.
+# MAGIC `precio_unit_con_iva` **no significa lo mismo** en cada formato: en el mayorista es el precio unitario dentro del
+# MAGIC bulto y en el minorista es el precio de lista; al comparar precios conviene separar por `formato_productos`.
+# MAGIC
+# MAGIC ### Indicadores de calidad (no rechazan filas)
+# MAGIC
+# MAGIC | Columna | Por qué existe | Cómo se calcula |
+# MAGIC |---|---|---|
+# MAGIC | `id_gtin14` | El mismo producto puede venir con distinta cantidad de ceros a la izquierda según el comercio; para compararlo entre comercios hay que llevar el código a un formato único | Sólo si `es_ean` y el código es numérico de 8 a 14 dígitos: se quitan los ceros a la izquierda y se rellena con ceros hasta 14 |
+# MAGIC | `ean_valido` | Un código mal tipeado nunca va a coincidir con el mismo producto en otro comercio; mide cuántos códigos son confiables antes de compararlos | Dígito verificador GTIN (módulo 10); `NULL` si el código no es EAN |
+# MAGIC | `bulto_con_iva_consistente`, `bulto_sin_iva_consistente` (mayorista) | El bulto debe costar el precio unitario por la cantidad de unidades; si no, algún precio está mal cargado | `abs(bulto − unitario × unidad_venta) ≤ 0,01 × unidad_venta + 0,01` (tolerancia de redondeo) |
+# MAGIC | `alicuota_iva_implicita` (mayorista) | Precio con IVA / sin IVA − 1 debería parecerse a una alícuota real (0, 0,105, 0,21, 0,27); valores raros delatan precios mal cargados | `precio_unit_con_iva / precio_unit_sin_iva − 1` |
+# MAGIC
+# MAGIC Se calculan en Silver y no se usan para rechazar: dejan la evidencia de calidad sin perder filas que sí son válidas.
+# MAGIC
 # MAGIC El CSV usa `|` como separador y comillas dobles para valores que contienen `|` o `"` (con `""` como
 # MAGIC comilla escapada). El corte por `|` respeta las comillas y las celdas se desenvuelven al leerlas.
 
@@ -156,9 +183,10 @@ def invalido(column):
 GTIN_CHECK = ("(10 - (aggregate(sequence(0, 12), 0, (acc, i) -> acc + cast(substring(id_gtin14, i + 1, 1) as int) "
               "* (CASE WHEN i % 2 = 0 THEN 3 ELSE 1 END)) % 10)) % 10 = cast(substring(id_gtin14, 14, 1) as int)")
 
-# SEPA publica productos.csv en dos formatos:
-#   mayorista (19 columnas): precios unitarios con y sin IVA, bulto, id_dun_14.
-#   minorista (17 columnas): precio de lista, precio de referencia (por kg/l/...) y promociones.
+# SEPA publica productos.csv en dos formatos y no los etiqueta: se distinguen por el encabezado / cantidad de columnas.
+#   mayorista (19 columnas): precio unitario del bulto con y sin IVA, precio del bulto, unidad_venta, id_dun_14.
+#   minorista (17 columnas): precio de lista (de góndola), precio de referencia (por kg/l/u) y promociones.
+# `formato_productos` deja esa clasificación explícita en cada fila (ver la explicación en la sección 1).
 COLUMNAS_MAYORISTA, COLUMNAS_MINORISTA = 19, 17
 
 
@@ -168,7 +196,7 @@ def parse_productos(bronze):
     df = lineas(bronze, "productos.csv").select(
         "fecha", "fecha_export", "source_zip", "inner_zip", "line_no", "ingested_at", "raw_line",
         F.col("n").alias("n_columnas"),
-        F.when(may, F.lit("mayorista")).when(mino, F.lit("minorista")).alias("esquema"),
+        F.when(may, F.lit("mayorista")).when(mino, F.lit("minorista")).alias("formato_productos"),
         entero(0).alias("id_comercio"),
         entero(1).alias("id_bandera"),
         entero(2).alias("id_sucursal"),
@@ -196,8 +224,10 @@ def parse_productos(bronze):
         F.when(mino, num(11)).alias("cantidad_referencia"),
         F.when(mino, txt(12)).alias("unidad_medida_referencia"),
     )
-    # GTIN-14 sólo para códigos EAN/UPC: se quitan ceros a la izquierda y se rellena a 14, así el mismo
-    # producto coincide aunque un comercio lo informe con ceros de más. Son *indicadores*, no rechazan.
+    # Indicadores de calidad del código de producto (NO rechazan filas; el porqué está en la sección 1):
+    #  - id_gtin14: código EAN llevado a 14 dígitos, para que el mismo producto coincida entre comercios
+    #    aunque lo informen con distinta cantidad de ceros a la izquierda.
+    #  - ean_valido: ¿el dígito verificador GTIN (módulo 10) es correcto? NULL si el código no es EAN.
     df = (df.withColumn("id_gtin14",
                         F.when(F.col("es_ean") & F.col("id_producto").rlike("^[0-9]{8,14}$")
                                & F.col("id_producto").rlike("[1-9]"),
@@ -206,8 +236,8 @@ def parse_productos(bronze):
                         F.when(~F.col("es_ean"), F.lit(None).cast("boolean"))
                          .when(F.col("id_gtin14").isNull(), F.lit(False))
                          .otherwise(F.coalesce(F.expr(GTIN_CHECK), F.lit(False)))))
-    mayorista = F.col("esquema") == "mayorista"
-    reason = (F.when(F.col("esquema").isNull(), "columnas_inesperadas")
+    mayorista = F.col("formato_productos") == "mayorista"
+    reason = (F.when(F.col("formato_productos").isNull(), "columnas_inesperadas")
               .when(F.col("fecha").isNull(), "sin_fecha")
               .when(F.col("id_comercio").isNull() | F.col("id_sucursal").isNull(), "sin_id_comercio_o_sucursal")
               .when(F.col("id_producto").isNull(), "sin_id_producto")
@@ -227,10 +257,13 @@ def latest_productos(ok):
                     F.col("unidad_venta"))
 
     def bulto_ok(bulto, unitario):
-        # bulto = unitario × unidad_venta; tolerancia por el redondeo a 2 decimales de cada término
+        # Indicador mayorista: el bulto debe costar unitario × unidad_venta (si no, hay un precio mal cargado).
+        # Tolerancia por el redondeo a 2 decimales de cada término. NULL si no hay bulto (minorista).
         return F.when(F.col(bulto).isNotNull() & uv.isNotNull(),
                       F.abs(F.col(bulto).cast("double") - unitario * uv) <= 0.01 * uv + 0.01)
 
+    # alicuota_iva_implicita: con IVA / sin IVA - 1. En un dato sano da una alícuota real (0, 0,105, 0,21, 0,27);
+    # valores raros delatan precios mal cargados. Sólo mayorista (el minorista no informa precio sin IVA).
     return (d.withColumn("alicuota_iva_implicita", F.round(con / sin - 1, 4))
              .withColumn("bulto_con_iva_consistente", bulto_ok("precio_bulto_con_iva", con))
              .withColumn("bulto_sin_iva_consistente", bulto_ok("precio_bulto_sin_iva", sin))
@@ -317,6 +350,22 @@ def dim_rechazos(bronze):
     cols = ["file_name", "source_zip", "inner_zip", "fecha", "line_no", "n", "raw_line", "quality_reason", "ingested_at"]
     return (s.filter("quality_reason IS NOT NULL").select(*cols)
             .unionByName(c.filter("quality_reason IS NOT NULL").select(*cols)))
+
+
+def formato_por_comercio(bronze):
+    """Formato de productos.csv de cada comercio, leído del ENCABEZADO del archivo (línea 0 en Bronce).
+    Se usa para etiquetar silver_comercio y silver_sucursales; 'desconocido' si no hay productos.csv."""
+    h = (bronze.filter((F.col("file_name") == "productos.csv") & (F.col("ingest_status") == "ok")
+                       & (F.col("line_no") == 0))
+         .withColumn("formato_productos",
+                     F.when(F.col("raw_line").contains("precio_unitario_bulto_por_unidad_venta"), "mayorista")
+                      .when(F.col("raw_line").contains("productos_precio_lista"), "minorista")
+                      .otherwise("desconocido"))
+         .withColumn("id_comercio", F.col("id_comercio").cast("bigint"))
+         .filter("id_comercio IS NOT NULL"))
+    w = (Window.partitionBy("id_comercio")
+         .orderBy(F.col("fecha").desc(), F.col("fecha_export").desc_nulls_last(), F.col("ingested_at").desc()))
+    return h.withColumn("rn", F.row_number().over(w)).filter("rn = 1").select("id_comercio", "formato_productos")
 
 
 def ensure_table(df, table):
@@ -458,7 +507,7 @@ for t in (T_PROD, T_QUAR):
     if spark.catalog.tableExists(t):
         tipos = dict(spark.table(t).dtypes)
         if not tipos.get("precio_unit_con_iva", "").startswith("decimal") or "id_gtin14" not in tipos \
-                or "esquema" not in tipos:
+                or "formato_productos" not in tipos:
             raise Exception(f"{t} tiene el esquema anterior. Ejecutá una vez con full_refresh = si "
                             "(se reconstruye desde Bronce sin perder datos).")
 
@@ -559,11 +608,25 @@ display(spark.table(T_QUAR).groupBy("fecha", "quality_reason").count().orderBy("
 
 ref_prov = spark.table(T_REF_PROV)
 
-(parse_sucursales(bronze, ref_prov).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(T_SUC))
-(parse_comercio(bronze).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(T_COM))
+formatos = F.broadcast(formato_por_comercio(bronze))
+
+
+def con_formato(df):
+    return (df.join(formatos, "id_comercio", "left")
+              .withColumn("formato_productos", F.coalesce("formato_productos", F.lit("desconocido"))))
+
+
+(con_formato(parse_sucursales(bronze, ref_prov))
+ .write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(T_SUC))
+(con_formato(parse_comercio(bronze))
+ .write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(T_COM))
 (dim_rechazos(bronze).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(T_DIM_QUAR))
 print(f"silver_sucursales: {spark.table(T_SUC).count():,} · silver_comercio: {spark.table(T_COM).count():,} · "
       f"dimensiones en cuarentena: {spark.table(T_DIM_QUAR).count():,}")
+
+print("Control de la etiqueta: formato de productos vs. tipo que declara cada sucursal "
+      "(los comercios 'mayorista' deberían declarar tipo mayorista):")
+display(spark.table(T_SUC).groupBy("formato_productos", "tipo").count().orderBy("formato_productos", F.desc("count")))
 
 display(spark.table(T_SUC).groupBy("provincia_estado").count().orderBy(F.desc("count")))
 print("Valores de provincia que no se pudieron reconocer (si hay, agregalos a ALIAS_PROVINCIA):")
