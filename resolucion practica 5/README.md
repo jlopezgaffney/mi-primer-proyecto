@@ -1,5 +1,30 @@
 Jose Lopez Gaffney
 student_id: jose1
+Escala: small
+
+
+TABLA:
+
+| run | modelo | features | class_weight | umbral | hiperparametros | train_pr_auc | pr_auc | accuracy | precision | recall | f1 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| modelo=gradient_boosting | gradient_boosting | completas | ninguno | 0.3 | learning_rate=0.03, max_depth=sin_limite | 0.64 | 0.585 | 0.905 | 0.539 | 0.574 | 0.556 |
+| estoy atrasado, nol lego | gradient_boosting | completas | ninguno | 0.3 | learning_rate=0.03, max_depth=sin_limite | 0.64 | 0.585 | 0.905 | 0.539 | 0.574 | 0.556 |
+| learning_rate=0.03 | gradient_boosting | completas | ninguno | 0.2 | learning_rate=0.03, max_depth=sin_limite | 0.64 | 0.585 | 0.882 | 0.454 | 0.678 | 0.544 |
+| Prueba 1 | gradient_boosting | completas | ninguno | 0.2 | learning_rate=0.03, max_depth=sin_limite | 0.64 | 0.585 | 0.882 | 0.454 | 0.678 | 0.544 |
+| modelo=gradient_boosting | gradient_boosting | completas | ninguno | 0.2 | learning_rate=0.1, max_depth=sin_limite | 0.674 | 0.585 | 0.881 | 0.451 | 0.669 | 0.539 |
+| gradient_boosting-completas-u0.2 | gradient_boosting | completas | ninguno | 0.2 | learning_rate=0.1, max_depth=sin_limite | 0.674 | 0.585 | 0.881 | 0.451 | 0.669 | 0.539 |
+| learning_rate=0.1 | gradient_boosting | completas | ninguno | 0.2 | learning_rate=0.1, max_depth=sin_limite | 0.674 | 0.585 | 0.881 | 0.451 | 0.669 | 0.539 |
+| modelo=gradient_boosting | gradient_boosting | completas | balanced | 0.2 | learning_rate=0.1, max_depth=sin_limite | 0.62 | 0.578 | 0.636 | 0.213 | 0.927 | 0.346 |
+| gradient_boosting-completas-u0.2 | gradient_boosting | completas | balanced | 0.2 | learning_rate=0.1, max_depth=sin_limite | 0.62 | 0.578 | 0.636 | 0.213 | 0.927 | 0.346 |
+| modelo=gradient_boosting | gradient_boosting | completas | balanced | 0.5 | learning_rate=0.1, max_depth=sin_limite | 0.62 | 0.578 | 0.811 | 0.33 | 0.799 | 0.467 |
+| gradient_boosting-completas-u0.5 | gradient_boosting | completas | balanced | 0.5 | learning_rate=0.1, max_depth=sin_limite | 0.62 | 0.578 | 0.811 | 0.33 | 0.799 | 0.467 |
+| modelo=gradient_boosting | gradient_boosting | completas | balanced | 0.5 | learning_rate=0.1, max_depth=sin_limite | 0.62 | 0.578 | 0.811 | 0.33 | 0.799 | 0.467 |
+| gradient_boosting-completas-u0.5 | gradient_boosting | completas | balanced | 0.5 | learning_rate=0.1, max_depth=sin_limite | 0.62 | 0.578 | 0.811 | 0.33 | 0.799 | 0.467 |
+| modelo=gradient_boosting | gradient_boosting | completas | balanced | 0.2 | learning_rate=0.03, max_depth=sin_limite | 0.612 | 0.577 | 0.617 | 0.205 | 0.934 | 0.336 |
+| Prueba 4 | gradient_boosting | completas | balanced | 0.2 | learning_rate=0.03, max_depth=sin_limite | 0.612 | 0.577 | 0.617 | 0.205 | 0.934 | 0.336 |
+
+
+Run registrado: learning_rate=0.03, un gradient boosting con variables completas, umbral 0,2 y PR-AUC de test 0,585. Quedó como workspace.bigdata_jose1.fraud_model, versión 2, alias champion
 
 1) ¿Cuántas filas tiene cada split de ml_features y qué porcentaje de contracargos hay en cada uno? ¿Por qué se separa por fecha y no al azar?
 
@@ -95,7 +120,7 @@ Quiere decir que se memorizaron el entrenamiento y no generalizan (overfitting).
 
 Con search_runs podés filtrar y ordenar los runs desde código como si fueran una tabla, y eso sirve cuando tenés decenas de runs y mirarlos uno por uno en la interfaz no da. 
 
-El filtro sería tags.student_id = 'bigdata_jose1' AND params.model_type = 'random_forest' AND metrics.test_pr_auc > 0.55.
+El filtro sería tags.student_id = 'jose1' AND params.model_type = 'random_forest' AND metrics.test_pr_auc > 0.55.
 
 
 16) En fraude, ¿qué cuesta más, una alerta falsa o un contracargo no detectado? Si el equipo de riesgo sólo puede revisar una cantidad fija de alertas por día, ¿cómo usarías el umbral?
