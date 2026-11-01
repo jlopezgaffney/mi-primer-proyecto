@@ -8,7 +8,7 @@
 # MAGIC | Tabla | Qué es |
 # MAGIC |---|---|
 # MAGIC | `bronze_sepa_lines` | Una fila por línea de CSV, sin parsear |
-# MAGIC | `bronze_sepa_audit` | Diagnóstico por CSV: líneas, encabezado, columnas, caracteres inválidos |
+# MAGIC | `bronze_sepa_audit` | Diagnóstico por CSV: líneas, encabezado, columnas, caracteres inválidos y `formato_productos` (mayorista/minorista) |
 # MAGIC | `bronze_zip_files` (vista) | Un registro por zip diario recibido |
 # MAGIC | `bronze_sepa_errors` (vista) | Zips o CSVs ilegibles, con el motivo |
 # MAGIC
@@ -211,6 +211,13 @@ audit = (lines.filter("ingest_status = 'ok'")
               F.max(F.when(F.col("line_no") == 0, F.col("raw_line"))).alias("encabezado"),
               F.sum(F.col("raw_line").contains("\ufffd").cast("int")).alias("lineas_con_caracteres_invalidos"))
          .withColumn("columnas_encabezado", F.size(F.split("encabezado", r"\|")))
+         # SEPA no etiqueta el formato de productos.csv: se reconoce por los nombres del encabezado.
+         #   mayorista (19 columnas): precio unitario por bulto con/sin IVA. minorista (17): precio de lista.
+         .withColumn("formato_productos",
+                     F.when(F.col("file_name") != "productos.csv", F.lit(None).cast("string"))
+                      .when(F.col("encabezado").contains("precio_unitario_bulto_por_unidad_venta"), "mayorista")
+                      .when(F.col("encabezado").contains("productos_precio_lista"), "minorista")
+                      .otherwise("desconocido"))
          .withColumn("schema_hash", F.md5("encabezado")))      # cambia si cambia el esquema del CSV
 audit.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(T_AUDIT)
 
@@ -223,7 +230,7 @@ SELECT source_zip, min(fecha) AS fecha, count(DISTINCT inner_zip) AS zips_de_com
        count(*) AS lineas, min(ingested_at) AS ingested_at
 FROM {T_LINES} GROUP BY source_zip""")
 
-display(spark.table(T_AUDIT).groupBy("file_name", "columnas_encabezado", "schema_hash")
+display(spark.table(T_AUDIT).groupBy("file_name", "formato_productos", "columnas_encabezado", "schema_hash")
         .agg(F.count("*").alias("archivos"), F.sum("lineas_de_datos").alias("lineas_de_datos"))
         .orderBy("file_name", "columnas_encabezado"))
 
