@@ -157,6 +157,6 @@ El drift es cuando los datos que llegan cambian respecto de los que se usaron pa
 
 20)Ubicá lo que hiciste en el ciclo de vida de MLOps (datos, entrenamiento, tracking, registro, despliegue, monitoreo). ¿Qué faltaría para tener este modelo en producción real? Nombrá al menos dos cosas.
 
-Arme los datos, entrene y registre los runs en MLflow. Elegir el mejor, lo registre con el alias champion, y lo use para puntuar las transacciones nuevas y monitorearlas. 
+Arme los datos, entrene y registre los runs en MLflow. Elegi el mejor, lo registre con el alias champion, y lo use para puntuar las transacciones nuevas y lo monitorearee. 
 
 Para tenerlo en producción de verdad faltaría automatizar el scoring y el reentrenamiento con un job, y tener un monitoreo que avise solo cuando hay drift o cuando cae el rendimiento.
